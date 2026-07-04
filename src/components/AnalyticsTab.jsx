@@ -233,9 +233,9 @@ export default function AnalyticsTab({ projects }) {
                             className="leaderboard-bar-fill active" 
                             style={{ 
                               width: `${activePercent}%`,
-                              backgroundColor: '#6366f1',
-                              borderRadius: donePercent > 0 ? '3px 0 0 3px' : '3px',
-                              boxShadow: '0 0 8px rgba(99, 102, 241, 0.4)'
+                              background: 'linear-gradient(90deg, #6366f1, #8b5cf6)',
+                              borderRadius: donePercent > 0 ? '4px 0 0 4px' : '4px',
+                              boxShadow: '0 0 10px rgba(99, 102, 241, 0.6)'
                             }}
                             title={`${activeCount} active project(s)`}
                           />
@@ -245,9 +245,9 @@ export default function AnalyticsTab({ projects }) {
                             className="leaderboard-bar-fill done" 
                             style={{ 
                               width: `${donePercent}%`,
-                              backgroundColor: 'rgba(99, 102, 241, 0.25)',
-                              borderRadius: activePercent > 0 ? '0 3px 3px 0' : '3px',
-                              boxShadow: 'none'
+                              background: 'linear-gradient(90deg, #10b981, #34d399)',
+                              borderRadius: activePercent > 0 ? '0 4px 4px 0' : '4px',
+                              boxShadow: '0 0 10px rgba(16, 185, 129, 0.5)'
                             }}
                             title={`${doneCount} completed project(s)`}
                           />

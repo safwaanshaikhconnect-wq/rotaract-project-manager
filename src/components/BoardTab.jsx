@@ -1,7 +1,7 @@
 import { MEMBERS, colorFor, initials, shortName } from '../lib/members'
 
 export default function BoardTab({ projects }) {
-  const busyIds = new Set(projects.flatMap(p => p.assigned_ids ?? []))
+  const busyIds = new Set(projects.filter(p => p.status !== 'done').flatMap(p => p.assigned_ids ?? []))
 
   const groups = {}
   MEMBERS.forEach(m => {

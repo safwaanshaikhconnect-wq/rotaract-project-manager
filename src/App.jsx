@@ -153,7 +153,7 @@ export default function App() {
   }
 
   // ── Derived stats ─────────────────────────────────────────────────────────
-  const busyIds = new Set(projects.flatMap(p => p.assigned_ids ?? []))
+  const busyIds = new Set(projects.filter(p => p.status !== 'done').flatMap(p => p.assigned_ids ?? []))
   const activeProjects = projects.filter(p => p.status !== 'done').length
 
   // ── Render ────────────────────────────────────────────────────────────────

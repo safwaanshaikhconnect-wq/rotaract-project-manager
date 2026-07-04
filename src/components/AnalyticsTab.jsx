@@ -208,9 +208,11 @@ export default function AnalyticsTab({ projects }) {
             ) : (
               leaderboard.map(({ member, activeCount, totalCount }) => {
                 const c = colorFor(member.id)
-                // Normalize bar fill relative to highest workload
-                const maxActiveCount = Math.max(...leaderboard.map(l => l.activeCount), 1)
-                const fillPercent = Math.min(Math.round((activeCount / maxActiveCount) * 100), 100)
+                // Normalize bar fill relative to highest total workload
+                const maxTotalCount = Math.max(...leaderboard.map(l => l.totalCount), 1)
+                const activePercent = Math.round((activeCount / maxTotalCount) * 100)
+                const doneCount = totalCount - activeCount
+                const donePercent = Math.round((doneCount / maxTotalCount) * 100)
                 
                 return (
                   <div key={member.id} className="leaderboard-row">
@@ -225,11 +227,31 @@ export default function AnalyticsTab({ projects }) {
                     </div>
                     
                     <div className="leaderboard-progress-section">
-                      <div className="leaderboard-bar-bg">
-                        <div 
-                          className="leaderboard-bar-fill" 
-                          style={{ width: `${fillPercent || 5}%` }}
-                        />
+                      <div className="leaderboard-bar-bg" style={{ display: 'flex' }}>
+                        {activePercent > 0 && (
+                          <div 
+                            className="leaderboard-bar-fill active" 
+                            style={{ 
+                              width: `${activePercent}%`,
+                              backgroundColor: '#6366f1',
+                              borderRadius: donePercent > 0 ? '3px 0 0 3px' : '3px',
+                              boxShadow: '0 0 8px rgba(99, 102, 241, 0.4)'
+                            }}
+                            title={`${activeCount} active project(s)`}
+                          />
+                        )}
+                        {donePercent > 0 && (
+                          <div 
+                            className="leaderboard-bar-fill done" 
+                            style={{ 
+                              width: `${donePercent}%`,
+                              backgroundColor: 'rgba(99, 102, 241, 0.25)',
+                              borderRadius: activePercent > 0 ? '0 3px 3px 0' : '3px',
+                              boxShadow: 'none'
+                            }}
+                            title={`${doneCount} completed project(s)`}
+                          />
+                        )}
                       </div>
                       <span className="leaderboard-count">
                         <strong>{activeCount}</strong> active <span className="total-count-sub">({totalCount} total)</span>

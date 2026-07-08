@@ -560,6 +560,29 @@ body {
   background: rgba(31, 41, 55, 0.7);
 }
 
+.add-project-btn-top {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: linear-gradient(90deg, #6366f1, #4f46e5);
+  border: none;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13.5px;
+  padding: 9px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.add-project-btn-top:hover {
+  background: linear-gradient(90deg, #4f46e5, #4338ca);
+  box-shadow: 0 4px 18px rgba(99, 102, 241, 0.45);
+  transform: translateY(-1px);
+}
+
 /* ── Project Description ── */
 .project-desc {
   font-size: 12.5px;
@@ -1202,7 +1225,7 @@ body {
     align-items: stretch;
     gap: 8px;
   }
-  .filter-search, .filter-select {
+  .filter-search, .filter-select, .add-project-btn-top {
     width: 100%;
   }
 

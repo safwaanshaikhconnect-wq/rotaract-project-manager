@@ -383,6 +383,9 @@ export default function ProjectsTab({ projects, onAssignMember, onRemoveMember, 
           <option value="date-asc">Date (Ascending)</option>
           <option value="date-desc">Date (Descending)</option>
         </select>
+        <button className="add-project-btn-top" onClick={() => setShowModal(true)}>
+          + Add project
+        </button>
       </div>
 
       <div className="project-grid">
@@ -397,9 +400,6 @@ export default function ProjectsTab({ projects, onAssignMember, onRemoveMember, 
             onToggleStatus={onToggleStatus}
           />
         ))}
-        <button className="add-project-card" onClick={() => setShowModal(true)}>
-          + Add project
-        </button>
       </div>
       {showModal && (
         <AddProjectModal

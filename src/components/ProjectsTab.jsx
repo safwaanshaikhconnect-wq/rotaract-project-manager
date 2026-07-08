@@ -293,7 +293,7 @@ export default function ProjectsTab({ projects, onAssignMember, onRemoveMember, 
   const [search, setSearch] = useState('')
   const [avenueFilter, setAvenueFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
-  const [sortBy, setSortBy] = useState('newest')
+  const [sortBy, setSortBy] = useState('date-desc')
 
   // Filtered & Sorted projects
   const processedProjects = useMemo(() => {

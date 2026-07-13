@@ -58,9 +58,17 @@ export default function AnalyticsTab({ projects }) {
   // 4. Club Metrics
   const metrics = useMemo(() => {
     const totalMembersCount = MEMBERS.length
-    const busyIds = new Set(projects.flatMap(p => p.assigned_ids ?? []))
+    const busyIds = new Set(projects.flatMap(p => {
+      const ids = p.assigned_ids ? [...p.assigned_ids] : []
+      if (p.chair_id) ids.push(p.chair_id)
+      return ids
+    }))
     const busyActiveIds = new Set(
-      projects.filter(p => p.status !== 'done').flatMap(p => p.assigned_ids ?? [])
+      projects.filter(p => p.status !== 'done').flatMap(p => {
+        const ids = p.assigned_ids ? [...p.assigned_ids] : []
+        if (p.chair_id) ids.push(p.chair_id)
+        return ids
+      })
     )
     const participationRate = totalMembersCount ? Math.round((busyIds.size / totalMembersCount) * 100) : 0
     const activeParticipationRate = totalMembersCount ? Math.round((busyActiveIds.size / totalMembersCount) * 100) : 0
@@ -75,6 +83,26 @@ export default function AnalyticsTab({ projects }) {
       avgTeamSize,
       totalAssignments
     }
+  }, [projects])
+
+  // 5. Projects Chaired Leaderboard
+  const chairedLeaderboard = useMemo(() => {
+    const counts = MEMBERS.map(m => {
+      const chairedCount = projects.filter(p => p.chair_id === m.id).length
+      return { member: m, chairedCount }
+    })
+    return counts
+      .filter(item => item.chairedCount > 0)
+      .sort((a, b) => b.chairedCount - a.chairedCount)
+      .slice(0, 8)
+  }, [projects])
+
+  // 6. Supportive Involvement Progress
+  const involvementTarget = 100
+  const involvementMetrics = useMemo(() => {
+    const totalSupportive = projects.reduce((acc, p) => acc + (p.assigned_ids ?? []).length, 0)
+    const percentage = Math.min(100, Math.round((totalSupportive / involvementTarget) * 100))
+    return { totalSupportive, percentage }
   }, [projects])
 
   if (projects.length === 0) {
@@ -198,9 +226,45 @@ export default function AnalyticsTab({ projects }) {
           </div>
         </div>
 
+
+
+        {/* Projects Chaired Leaderboard */}
+        <div className="analytics-chart-card full-width-card" style={{ marginBottom: '20px' }}>
+          <h3>Projects Chaired Leaderboard</h3>
+          <p className="leaderboard-desc">Top members ranked by the number of projects they have chaired.</p>
+          <div className="leaderboard-list">
+            {chairedLeaderboard.length === 0 ? (
+              <p className="no-leaderboard">No members have chaired any projects yet.</p>
+            ) : (
+              chairedLeaderboard.map(({ member, chairedCount }) => {
+                const c = colorFor(member.id)
+                return (
+                  <div key={member.id} className="leaderboard-row">
+                    <div className="leaderboard-member-info">
+                      <div className="mini-avatar" style={{ background: c.bg, color: c.fg }}>
+                        {initials(member.name)}
+                      </div>
+                      <div className="leaderboard-names">
+                        <span className="leaderboard-name">{shortName(member.name)}</span>
+                        <span className="leaderboard-role">{member.role}</span>
+                      </div>
+                    </div>
+                    <div className="leaderboard-progress-section" style={{ flexDirection: 'row', alignItems: 'center', gap: '8px', minWidth: 'auto' }}>
+                      <span style={{ fontSize: '16px' }}>🏆</span>
+                      <span className="leaderboard-count" style={{ fontSize: '14px', margin: 0 }}>
+                        <strong>{chairedCount}</strong> project(s)
+                      </span>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+
         {/* Member Involvement Leaderboard */}
         <div className="analytics-chart-card full-width-card">
-          <h3>Active Workload Leaderboard</h3>
+          <h3>Club Involvement</h3>
           <p className="leaderboard-desc">Top members sorted by active project assignments (completed projects excluded from workload rank).</p>
           <div className="leaderboard-list">
             {leaderboard.length === 0 ? (
@@ -254,7 +318,7 @@ export default function AnalyticsTab({ projects }) {
                         )}
                       </div>
                       <span className="leaderboard-count">
-                        <strong>{activeCount}</strong> active <span className="total-count-sub">({totalCount} total)</span>
+                        <strong>{totalCount}</strong> projects
                       </span>
                     </div>
                   </div>

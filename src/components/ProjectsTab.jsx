@@ -21,7 +21,7 @@ function formatDate(dateStr) {
 
 // ── Member picker dropdown ────────────────────────────────────────────────────
 
-function MemberDropdown({ project, projects, onAssignMember, onClose }) {
+function MemberDropdown({ project, projects, excludeIds, onSelectMember, onClose }) {
   const [search, setSearch] = useState('')
   const ref = useRef(null)
 
@@ -34,7 +34,7 @@ function MemberDropdown({ project, projects, onAssignMember, onClose }) {
   }, [onClose])
 
   const available = MEMBERS.filter(m =>
-    !(project.assigned_ids ?? []).includes(m.id) &&
+    !(excludeIds || []).includes(m.id) &&
     m.name.toLowerCase().includes(search.toLowerCase())
   )
 
@@ -42,7 +42,7 @@ function MemberDropdown({ project, projects, onAssignMember, onClose }) {
   const memberWorkloads = useMemo(() => {
     const workloads = {}
     MEMBERS.forEach(m => {
-      workloads[m.id] = projects.filter(p => p.status !== 'done' && (p.assigned_ids ?? []).includes(m.id)).length
+      workloads[m.id] = projects.filter(p => p.status !== 'done' && ((p.assigned_ids ?? []).includes(m.id) || p.chair_id === m.id)).length
     })
     return workloads;
   }, [projects])
@@ -68,7 +68,7 @@ function MemberDropdown({ project, projects, onAssignMember, onClose }) {
                 <button
                   key={m.id}
                   className="member-dropdown-item"
-                  onClick={() => { onAssignMember(project.id, m.id); onClose() }}
+                  onClick={() => { onSelectMember(m.id); onClose() }}
                 >
                   <div className="mini-avatar" style={{ background: c.bg, color: c.fg }}>
                     {initials(m.name)}
@@ -95,9 +95,14 @@ function MemberDropdown({ project, projects, onAssignMember, onClose }) {
 
 // ── Project card ──────────────────────────────────────────────────────────────
 
-function ProjectCard({ project, projects, onAssignMember, onRemoveMember, onDeleteProject, onToggleStatus }) {
-  const [showDropdown, setShowDropdown] = useState(false)
+function ProjectCard({ project, projects, onAddSupportiveMember, onRemoveSupportiveMember, onSetChair, onRemoveChair, onDeleteProject, onToggleStatus }) {
+  const [dropdownType, setDropdownType] = useState(null)
   const assigned = MEMBERS.filter(m => (project.assigned_ids ?? []).includes(m.id))
+  const chair = MEMBERS.find(m => m.id === project.chair_id)
+
+  let excludeIds = []
+  if (dropdownType === 'chair') excludeIds = chair ? [chair.id] : []
+  if (dropdownType === 'supportive') excludeIds = project.assigned_ids ?? []
 
   const statusClass = {
     active: 'badge-active',
@@ -150,7 +155,42 @@ function ProjectCard({ project, projects, onAssignMember, onRemoveMember, onDele
         <p className="project-desc">{project.description}</p>
       )}
 
-      <div className="assigned-list">
+      {/* Event Chair Section */}
+      <div className="section-label" style={{ marginTop: '16px', fontSize: '12px', fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        Event Chair
+      </div>
+      {chair ? (
+        <div className="assigned-row" style={{ marginTop: '8px' }}>
+          <div className="mini-avatar" style={{ background: colorFor(chair.id).bg, color: colorFor(chair.id).fg }}>
+            {initials(chair.name)}
+          </div>
+          <span>{shortName(chair.name)}</span>
+          <button
+            className="remove-btn"
+            onClick={() => onRemoveChair(project.id)}
+            title="Remove chair"
+          >✕</button>
+        </div>
+      ) : (
+        <div className="add-member-wrap" style={{ marginTop: '8px' }}>
+          <button className="add-member-btn" onClick={() => setDropdownType(dropdownType === 'chair' ? null : 'chair')}>
+            + Set Chair
+          </button>
+          {dropdownType === 'chair' && (
+            <MemberDropdown
+              project={project} projects={projects} excludeIds={excludeIds}
+              onSelectMember={(mId) => onSetChair(project.id, mId)}
+              onClose={() => setDropdownType(null)}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Supportive Members Section */}
+      <div className="section-label" style={{ marginTop: '16px', fontSize: '12px', fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        Supportive Members
+      </div>
+      <div className="assigned-list" style={{ marginTop: '8px' }}>
         {assigned.length === 0
           ? <span className="empty-assign">No one assigned yet</span>
           : assigned.map(m => {
@@ -163,7 +203,7 @@ function ProjectCard({ project, projects, onAssignMember, onRemoveMember, onDele
                   <span>{shortName(m.name)}</span>
                   <button
                     className="remove-btn"
-                    onClick={() => onRemoveMember(project.id, m.id)}
+                    onClick={() => onRemoveSupportiveMember(project.id, m.id)}
                     title="Remove from project"
                   >✕</button>
                 </div>
@@ -173,18 +213,14 @@ function ProjectCard({ project, projects, onAssignMember, onRemoveMember, onDele
       </div>
 
       <div className="add-member-wrap">
-        <button
-          className="add-member-btn"
-          onClick={() => setShowDropdown(v => !v)}
-        >
-          + Add member
+        <button className="add-member-btn" onClick={() => setDropdownType(dropdownType === 'supportive' ? null : 'supportive')}>
+          + Add supportive member
         </button>
-        {showDropdown && (
+        {dropdownType === 'supportive' && (
           <MemberDropdown
-            project={project}
-            projects={projects}
-            onAssignMember={onAssignMember}
-            onClose={() => setShowDropdown(false)}
+            project={project} projects={projects} excludeIds={excludeIds}
+            onSelectMember={(mId) => onAddSupportiveMember(project.id, mId)}
+            onClose={() => setDropdownType(null)}
           />
         )}
       </div>
@@ -286,7 +322,7 @@ function AddProjectModal({ onAdd, onClose }) {
 
 // ── Projects tab ──────────────────────────────────────────────────────────────
 
-export default function ProjectsTab({ projects, onAssignMember, onRemoveMember, onAddProject, onDeleteProject, onToggleStatus }) {
+export default function ProjectsTab({ projects, onAddSupportiveMember, onRemoveSupportiveMember, onSetChair, onRemoveChair, onAddProject, onDeleteProject, onToggleStatus }) {
   const [showModal, setShowModal] = useState(false)
   
   // Filters & Sorting state
@@ -394,8 +430,10 @@ export default function ProjectsTab({ projects, onAssignMember, onRemoveMember, 
             key={p.id}
             project={p}
             projects={projects}
-            onAssignMember={onAssignMember}
-            onRemoveMember={onRemoveMember}
+            onAddSupportiveMember={onAddSupportiveMember}
+            onRemoveSupportiveMember={onRemoveSupportiveMember}
+            onSetChair={onSetChair}
+            onRemoveChair={onRemoveChair}
             onDeleteProject={onDeleteProject}
             onToggleStatus={onToggleStatus}
           />

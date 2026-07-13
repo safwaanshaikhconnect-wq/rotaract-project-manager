@@ -58,7 +58,7 @@ export default function App() {
   }, [authed, fetchProjects])
 
   // ── Assignment handlers ───────────────────────────────────────────────────
-  async function handleAssignMember(projectId, memberId) {
+  async function handleAddSupportiveMember(projectId, memberId) {
     const project = projects.find(p => p.id === projectId)
     if (!project) return
     const current = project.assigned_ids ?? []
@@ -78,7 +78,7 @@ export default function App() {
     }
   }
 
-  async function handleRemoveMember(projectId, memberId) {
+  async function handleRemoveSupportiveMember(projectId, memberId) {
     const project = projects.find(p => p.id === projectId)
     if (!project) return
     const current = project.assigned_ids ?? []
@@ -97,6 +97,42 @@ export default function App() {
     }
   }
 
+  async function handleSetChair(projectId, memberId) {
+    const project = projects.find(p => p.id === projectId)
+    if (!project) return
+    const current = project.chair_id
+
+    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, chair_id: memberId } : p))
+
+    const { error } = await supabase
+      .from('projects')
+      .update({ chair_id: memberId })
+      .eq('id', projectId)
+
+    if (error) {
+      setProjects(prev => prev.map(p => p.id === projectId ? { ...p, chair_id: current } : p))
+      console.error('Failed to set chair:', error.message)
+    }
+  }
+
+  async function handleRemoveChair(projectId) {
+    const project = projects.find(p => p.id === projectId)
+    if (!project) return
+    const current = project.chair_id
+
+    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, chair_id: null } : p))
+
+    const { error } = await supabase
+      .from('projects')
+      .update({ chair_id: null })
+      .eq('id', projectId)
+
+    if (error) {
+      setProjects(prev => prev.map(p => p.id === projectId ? { ...p, chair_id: current } : p))
+      console.error('Failed to remove chair:', error.message)
+    }
+  }
+
   async function handleAddProject({ name, status, avenue, project_date, description }) {
     const { data, error } = await supabase
       .from('projects')
@@ -106,7 +142,8 @@ export default function App() {
         avenue: avenue || null, 
         project_date: project_date || null, 
         description: description || null,
-        assigned_ids: [] 
+        assigned_ids: [],
+        chair_id: null
       }])
       .select()
       .single()
@@ -153,7 +190,11 @@ export default function App() {
   }
 
   // ── Derived stats ─────────────────────────────────────────────────────────
-  const busyIds = new Set(projects.filter(p => p.status !== 'done').flatMap(p => p.assigned_ids ?? []))
+  const busyIds = new Set(projects.filter(p => p.status !== 'done').flatMap(p => {
+    const ids = p.assigned_ids ? [...p.assigned_ids] : []
+    if (p.chair_id) ids.push(p.chair_id)
+    return ids
+  }))
   const activeProjects = projects.filter(p => p.status !== 'done').length
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -206,8 +247,10 @@ export default function App() {
       ) : tab === 'projects' ? (
         <ProjectsTab
           projects={projects}
-          onAssignMember={handleAssignMember}
-          onRemoveMember={handleRemoveMember}
+          onAddSupportiveMember={handleAddSupportiveMember}
+          onRemoveSupportiveMember={handleRemoveSupportiveMember}
+          onSetChair={handleSetChair}
+          onRemoveChair={handleRemoveChair}
           onAddProject={handleAddProject}
           onDeleteProject={handleDeleteProject}
           onToggleStatus={handleToggleStatus}

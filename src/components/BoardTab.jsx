@@ -27,6 +27,9 @@ export default function BoardTab({ projects }) {
               )
               const activeCount = myProjects.filter(p => p.status !== 'done').length
 
+              // Only show project tags for projects where this member is the Chair
+              const chairedProjects = myProjects.filter(p => p.chair_id === m.id)
+
               return (
                 <div
                   key={m.id}
@@ -51,15 +54,14 @@ export default function BoardTab({ projects }) {
 
                   <div className={`status-dot ${isBusy ? 'dot-busy' : 'dot-free'}`} title={isBusy ? 'On a project' : 'Available'} />
 
-                  {myProjects.length > 0 && (
+                  {chairedProjects.length > 0 && (
                     <div className="proj-tags">
-                      {myProjects.map(p => {
-                        const isChair = p.chair_id === m.id
-                        const isDoneAndChair = p.status === 'done' && isChair
+                      {chairedProjects.map(p => {
+                        const isDone = p.status === 'done'
                         return (
                           <span 
                             key={p.id} 
-                            className={`proj-tag ${isDoneAndChair ? 'tag-done' : ''}`} 
+                            className={`proj-tag ${isDone ? 'tag-done' : ''}`} 
                             title={`${p.name} (${p.status})`}
                           >
                             {p.name}

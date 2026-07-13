@@ -1,7 +1,11 @@
 import { MEMBERS, colorFor, initials, shortName } from '../lib/members'
 
 export default function BoardTab({ projects }) {
-  const busyIds = new Set(projects.filter(p => p.status !== 'done').flatMap(p => p.assigned_ids ?? []))
+  const busyIds = new Set(projects.filter(p => p.status !== 'done').flatMap(p => {
+    const ids = p.assigned_ids ? [...p.assigned_ids] : []
+    if (p.chair_id) ids.push(p.chair_id)
+    return ids
+  }))
 
   const groups = {}
   MEMBERS.forEach(m => {
@@ -18,7 +22,9 @@ export default function BoardTab({ projects }) {
             {members.map(m => {
               const c = colorFor(m.id)
               const isBusy = busyIds.has(m.id)
-              const myProjects = projects.filter(p => (p.assigned_ids ?? []).includes(m.id))
+              const myProjects = projects.filter(p => 
+                p.chair_id === m.id || (p.assigned_ids ?? []).includes(m.id)
+              )
               const activeCount = myProjects.filter(p => p.status !== 'done').length
 
               return (
@@ -47,11 +53,19 @@ export default function BoardTab({ projects }) {
 
                   {myProjects.length > 0 && (
                     <div className="proj-tags">
-                      {myProjects.map(p => (
-                        <span key={p.id} className={`proj-tag ${p.status === 'done' ? 'tag-done' : ''}`} title={`${p.name} (${p.status})`}>
-                          {p.name}
-                        </span>
-                      ))}
+                      {myProjects.map(p => {
+                        const isChair = p.chair_id === m.id
+                        const isDoneAndChair = p.status === 'done' && isChair
+                        return (
+                          <span 
+                            key={p.id} 
+                            className={`proj-tag ${isDoneAndChair ? 'tag-done' : ''}`} 
+                            title={`${p.name} (${p.status})`}
+                          >
+                            {p.name}
+                          </span>
+                        )
+                      })}
                     </div>
                   )}
                 </div>

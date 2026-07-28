@@ -5,6 +5,7 @@ import AuthGate from './components/AuthGate'
 import BoardTab from './components/BoardTab'
 import ProjectsTab from './components/ProjectsTab'
 import AnalyticsTab from './components/AnalyticsTab'
+import CodeRedTab from './components/CodeRedTab'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -237,6 +238,9 @@ export default function App() {
         <button className={`tab-btn ${tab === 'analytics' ? 'active' : ''}`} onClick={() => setTab('analytics')}>
           Analytics
         </button>
+        <button className={`tab-btn cr-tab-btn ${tab === 'codered' ? 'active' : ''}`} onClick={() => setTab('codered')}>
+          🩸 Code Red
+        </button>
       </div>
 
       {/* Content */}
@@ -255,8 +259,10 @@ export default function App() {
           onDeleteProject={handleDeleteProject}
           onToggleStatus={handleToggleStatus}
         />
-      ) : (
+      ) : tab === 'analytics' ? (
         <AnalyticsTab projects={projects} />
+      ) : (
+        <CodeRedTab />
       )}
     </div>
   )

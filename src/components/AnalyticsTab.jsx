@@ -272,8 +272,8 @@ export default function AnalyticsTab({ projects }) {
             ) : (
               leaderboard.map(({ member, activeCount, totalCount }) => {
                 const c = colorFor(member.id)
-                // Normalize bar fill relative to target of 24 projects
-                const maxTotalCount = 24
+                // Normalize bar fill relative to target of 100 projects
+                const maxTotalCount = 100
                 const activePercent = Math.round((activeCount / maxTotalCount) * 100)
                 const doneCount = totalCount - activeCount
                 const donePercent = Math.round((doneCount / maxTotalCount) * 100)

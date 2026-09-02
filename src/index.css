@@ -217,6 +217,12 @@ body {
   gap: 8px;
   border-bottom: 0.5px solid rgba(255, 255, 255, 0.08);
   margin-bottom: 1.75rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .tab-btn {
@@ -230,6 +236,7 @@ body {
   cursor: pointer;
   margin-bottom: -1px;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 
 .tab-btn:hover {

@@ -197,6 +197,7 @@ export default function App() {
     return ids
   }))
   const activeProjects = projects.filter(p => p.status !== 'done').length
+  const completedProjects = projects.filter(p => p.status === 'done').length
 
   // ── Render ────────────────────────────────────────────────────────────────
   if (!authed) {
@@ -218,8 +219,8 @@ export default function App() {
           <div className="lbl">Total members</div>
         </div>
         <div className="stat-card">
-          <div className="num">{activeProjects}</div>
-          <div className="lbl">Active projects</div>
+          <div className="num">{completedProjects}</div>
+          <div className="lbl">Completed projects</div>
         </div>
         <div className="stat-card">
           <div className="num">{MEMBERS.length - busyIds.size}</div>

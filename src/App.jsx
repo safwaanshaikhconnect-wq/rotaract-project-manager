@@ -1,28 +1,36 @@
 import { useState, useCallback, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import { MEMBERS } from './lib/members'
+import { getCurrentUser, setCurrentUser, clearCurrentUser } from './lib/auth'
 import AuthGate from './components/AuthGate'
 import BoardTab from './components/BoardTab'
 import ProjectsTab from './components/ProjectsTab'
 import AnalyticsTab from './components/AnalyticsTab'
 import CodeRedTab from './components/CodeRedTab'
 import ReportTab from './components/ReportTab'
+import AccountTab from './components/AccountTab'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function isAuthed() {
-  return sessionStorage.getItem('rotaract_auth') === '1'
-}
 
 const STATUS_CYCLE = { planning: 'active', active: 'done', done: 'planning' }
 
 // ── App ───────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [authed, setAuthed] = useState(isAuthed())
+  const [currentUser, setLocalCurrentUser] = useState(getCurrentUser())
   const [tab, setTab] = useState('board')
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
+
+  function handleLogin(member) {
+    setCurrentUser(member)
+    setLocalCurrentUser(member)
+  }
+
+  function handleLogout() {
+    clearCurrentUser()
+    setLocalCurrentUser(null)
+  }
 
   // ── Fetch projects from Supabase ──────────────────────────────────────────
   const fetchProjects = useCallback(async () => {
@@ -35,7 +43,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!authed) return
+    if (!currentUser) return
 
     fetchProjects()
 
@@ -57,7 +65,7 @@ export default function App() {
       .subscribe()
 
     return () => supabase.removeChannel(channel)
-  }, [authed, fetchProjects])
+  }, [currentUser, fetchProjects])
 
   // ── Assignment handlers ───────────────────────────────────────────────────
   async function handleAddSupportiveMember(projectId, memberId) {
@@ -201,8 +209,8 @@ export default function App() {
   const completedProjects = projects.filter(p => p.status === 'done').length
 
   // ── Render ────────────────────────────────────────────────────────────────
-  if (!authed) {
-    return <AuthGate onAuth={() => setAuthed(true)} />
+  if (!currentUser) {
+    return <AuthGate onAuth={handleLogin} />
   }
 
   return (
@@ -246,16 +254,20 @@ export default function App() {
         <button className={`tab-btn ${tab === 'report' ? 'active' : ''}`} onClick={() => setTab('report')}>
           📄 Report
         </button>
+        <button className={`tab-btn ${tab === 'account' ? 'active' : ''}`} onClick={() => setTab('account')}>
+          👤 My Account
+        </button>
       </div>
 
       {/* Content */}
       {loading ? (
         <p style={{ color: '#aaa', fontSize: '14px', padding: '2rem 0' }}>Loading projects…</p>
       ) : tab === 'board' ? (
-        <BoardTab projects={projects} />
+        <BoardTab projects={projects} currentUser={currentUser} />
       ) : tab === 'projects' ? (
         <ProjectsTab
           projects={projects}
+          currentUser={currentUser}
           onAddSupportiveMember={handleAddSupportiveMember}
           onRemoveSupportiveMember={handleRemoveSupportiveMember}
           onSetChair={handleSetChair}
@@ -268,6 +280,13 @@ export default function App() {
         <AnalyticsTab projects={projects} />
       ) : tab === 'report' ? (
         <ReportTab projects={projects} />
+      ) : tab === 'account' ? (
+        <AccountTab
+          currentUser={currentUser}
+          projects={projects}
+          onLogout={handleLogout}
+          onNavigateToProjects={() => setTab('projects')}
+        />
       ) : (
         <CodeRedTab />
       )}

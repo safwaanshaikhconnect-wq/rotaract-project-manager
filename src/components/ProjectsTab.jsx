@@ -322,7 +322,7 @@ function AddProjectModal({ onAdd, onClose }) {
 
 // ── Projects tab ──────────────────────────────────────────────────────────────
 
-export default function ProjectsTab({ projects, onAddSupportiveMember, onRemoveSupportiveMember, onSetChair, onRemoveChair, onAddProject, onDeleteProject, onToggleStatus }) {
+export default function ProjectsTab({ projects, currentUser, onAddSupportiveMember, onRemoveSupportiveMember, onSetChair, onRemoveChair, onAddProject, onDeleteProject, onToggleStatus }) {
   const [showModal, setShowModal] = useState(false)
   
   // Filters & Sorting state
@@ -330,10 +330,16 @@ export default function ProjectsTab({ projects, onAddSupportiveMember, onRemoveS
   const [avenueFilter, setAvenueFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [sortBy, setSortBy] = useState('date-desc')
+  const [myProjectsOnly, setMyProjectsOnly] = useState(false)
 
   // Filtered & Sorted projects
   const processedProjects = useMemo(() => {
     let result = [...projects]
+
+    // My Projects filter
+    if (myProjectsOnly && currentUser) {
+      result = result.filter(p => p.chair_id === currentUser.id || (p.assigned_ids ?? []).includes(currentUser.id))
+    }
 
     // Search filter
     if (search.trim()) {
@@ -376,12 +382,22 @@ export default function ProjectsTab({ projects, onAddSupportiveMember, onRemoveS
     })
 
     return result
-  }, [projects, search, avenueFilter, statusFilter, sortBy])
+  }, [projects, search, avenueFilter, statusFilter, sortBy, myProjectsOnly, currentUser])
 
   return (
     <div>
       {/* Filters Toolbar */}
       <div className="filters-toolbar">
+        {currentUser && (
+          <button
+            type="button"
+            className={`filter-btn-my-projects ${myProjectsOnly ? 'active' : ''}`}
+            onClick={() => setMyProjectsOnly(!myProjectsOnly)}
+            title="Filter to projects where you are Event Chair or Supportive Member"
+          >
+            {myProjectsOnly ? '★ My Projects' : '☆ My Projects'}
+          </button>
+        )}
         <input
           type="text"
           className="filter-search"

@@ -9,6 +9,7 @@ import AnalyticsTab from './components/AnalyticsTab'
 import CodeRedTab from './components/CodeRedTab'
 import ReportTab from './components/ReportTab'
 import AccountTab from './components/AccountTab'
+import SplashIntro from './components/SplashIntro'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,7 @@ const STATUS_CYCLE = { planning: 'active', active: 'done', done: 'planning' }
 // ── App ───────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true)
   const [currentUser, setLocalCurrentUser] = useState(getCurrentUser())
   const [tab, setTab] = useState('board')
   const [projects, setProjects] = useState([])
@@ -210,11 +212,17 @@ export default function App() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   if (!currentUser) {
-    return <AuthGate onAuth={handleLogin} />
+    return (
+      <>
+        {showSplash && <SplashIntro onFinish={() => setShowSplash(false)} />}
+        <AuthGate onAuth={handleLogin} />
+      </>
+    )
   }
 
   return (
     <div className="app">
+      {showSplash && <SplashIntro onFinish={() => setShowSplash(false)} />}
       {/* Header */}
       <div className="top-bar">
         <h1>Rotaract Club of Karpagam Academy of Higher Education:</h1>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { MEMBERS } from '../lib/members'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -59,7 +59,6 @@ export default function ReportTab({ projects }) {
   const [selected, setSelected] = useState({})
   const [expanded, setExpanded] = useState({})
   const [status, setStatus] = useState('')
-  const importRef = useRef()
 
   // ── Derived filter options from real project data ──────────────────────────
   const availableAvenues = [...new Set(
@@ -154,38 +153,7 @@ export default function ReportTab({ projects }) {
     setSelected({})
   }
 
-  function handleExport() {
-    const data = { settings, extras, selected }
-    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `report-backup-${settings.monthLabel || 'draft'}.json`
-    a.click()
-    setStatus('Data exported.')
-  }
 
-  function handleImport() {
-    importRef.current.click()
-  }
-
-  function handleImportFile(e) {
-    const file = e.target.files[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = ev => {
-      try {
-        const data = JSON.parse(ev.target.result)
-        if (data.settings) setSettings({ ...defaultSettings, ...data.settings })
-        if (data.extras) setExtras(data.extras)
-        if (data.selected) setSelected(data.selected)
-        setStatus('Data imported.')
-      } catch {
-        alert('Could not read that file — is it a backup from this tool?')
-      }
-    }
-    reader.readAsText(file)
-    e.target.value = ''
-  }
 
   async function handleGenerate() {
     const reportProjects = projects.filter(p => selected[p.id])
@@ -638,9 +606,6 @@ export default function ReportTab({ projects }) {
         <div className="report-section-header">
           <h2 className="report-section-title" style={{ margin: 0 }}>Projects</h2>
           <div className="report-actions-row">
-            <button className="report-btn secondary" onClick={handleImport}>Import backup</button>
-            <input type="file" ref={importRef} accept="application/json" style={{ display: 'none' }} onChange={handleImportFile} />
-            <button className="report-btn secondary" onClick={handleExport}>Export backup</button>
             <button className="report-btn secondary" onClick={() => {
               const all = {}
               filteredProjects.forEach(p => { all[p.id] = true })

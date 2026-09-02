@@ -6,6 +6,7 @@ import BoardTab from './components/BoardTab'
 import ProjectsTab from './components/ProjectsTab'
 import AnalyticsTab from './components/AnalyticsTab'
 import CodeRedTab from './components/CodeRedTab'
+import ReportTab from './components/ReportTab'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -242,6 +243,9 @@ export default function App() {
         <button className={`tab-btn cr-tab-btn ${tab === 'codered' ? 'active' : ''}`} onClick={() => setTab('codered')}>
           🩸 Code Red
         </button>
+        <button className={`tab-btn ${tab === 'report' ? 'active' : ''}`} onClick={() => setTab('report')}>
+          📄 Report
+        </button>
       </div>
 
       {/* Content */}
@@ -262,6 +266,8 @@ export default function App() {
         />
       ) : tab === 'analytics' ? (
         <AnalyticsTab projects={projects} />
+      ) : tab === 'report' ? (
+        <ReportTab projects={projects} />
       ) : (
         <CodeRedTab />
       )}

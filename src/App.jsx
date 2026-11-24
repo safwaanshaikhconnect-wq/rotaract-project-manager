@@ -1,7 +1,13 @@
-import { useState, useCallback, useEffect } from 'react'
-import { supabase } from './lib/supabase'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { supabase, supabaseConfigError } from './lib/supabase'
 import { MEMBERS } from './lib/members'
-import { getCurrentUser, setCurrentUser, clearCurrentUser } from './lib/auth'
+import {
+  clearLegacyAuthArtifacts,
+  getSession,
+  onAuthStateChange,
+  resolveMemberProfile,
+  signOut,
+} from './lib/auth'
 import AuthGate from './components/AuthGate'
 import BoardTab from './components/BoardTab'
 import ProjectsTab from './components/ProjectsTab'
@@ -19,33 +25,144 @@ const STATUS_CYCLE = { planning: 'active', active: 'done', done: 'planning' }
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true)
-  const [currentUser, setLocalCurrentUser] = useState(getCurrentUser())
+  const [session, setSession] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [profileLoading, setProfileLoading] = useState(false)
+  const [currentUser, setCurrentUser] = useState(null)
+  const [authError, setAuthError] = useState('')
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false)
+
   const [tab, setTab] = useState('board')
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
 
-  function handleLogin(member) {
-    setCurrentUser(member)
-    setLocalCurrentUser(member)
-  }
+  const loadedAuthUserIdRef = useRef(null)
 
-  function handleLogout() {
-    clearCurrentUser()
-    setLocalCurrentUser(null)
+  // ── Bootstrap Supabase Auth session & listener ────────────────────────────
+  useEffect(() => {
+    clearLegacyAuthArtifacts()
+
+    if (supabaseConfigError || !supabase) {
+      setAuthLoading(false)
+      return
+    }
+
+    let active = true
+
+    getSession()
+      .then(({ session: initialSession }) => {
+        if (!active) return
+        setSession(initialSession)
+        setAuthLoading(false)
+      })
+      .catch(() => {
+        if (!active) return
+        setSession(null)
+        setAuthLoading(false)
+      })
+
+    const { data: authListener } = onAuthStateChange((event, nextSession) => {
+      if (!active) return
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecoveryMode(true)
+      } else if (event === 'SIGNED_OUT') {
+        setIsRecoveryMode(false)
+      }
+      setSession(nextSession ?? null)
+      setAuthLoading(false)
+    })
+
+    return () => {
+      active = false
+      authListener?.subscription?.unsubscribe()
+    }
+  }, [])
+
+  // ── Resolve authorized board member profile whenever authenticated user changes
+  useEffect(() => {
+    const authUser = session?.user ?? null
+
+    if (!authUser) {
+      loadedAuthUserIdRef.current = null
+      setCurrentUser(null)
+      setAuthError('')
+      setProfileLoading(false)
+      setProjects([])
+      setLoading(true)
+      setTab('board')
+      return
+    }
+
+    if (isRecoveryMode) {
+      return
+    }
+
+    if (loadedAuthUserIdRef.current === authUser.id) {
+      return
+    }
+
+    let active = true
+    setProfileLoading(true)
+    setAuthError('')
+
+    resolveMemberProfile(authUser)
+      .then((result) => {
+        if (!active) return
+        if (result.authorized && result.member) {
+          loadedAuthUserIdRef.current = authUser.id
+          setCurrentUser(result.member)
+          setAuthError('')
+        } else {
+          loadedAuthUserIdRef.current = null
+          setCurrentUser(null)
+          setAuthError(result.message || 'Not authorized for board access.')
+        }
+        setProfileLoading(false)
+      })
+      .catch(() => {
+        if (!active) return
+        loadedAuthUserIdRef.current = null
+        setCurrentUser(null)
+        setAuthError('Unable to verify board membership. Please try again.')
+        setProfileLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [session?.user?.id, session?.user?.email, isRecoveryMode])
+
+  async function handleLogout() {
+    await signOut()
+    loadedAuthUserIdRef.current = null
+    setSession(null)
+    setCurrentUser(null)
+    setAuthError('')
+    setIsRecoveryMode(false)
+    setProjects([])
+    setLoading(true)
+    setTab('board')
   }
 
   // ── Fetch projects from Supabase ──────────────────────────────────────────
   const fetchProjects = useCallback(async () => {
+    if (!supabase) return
+    setLoading(true)
     const { data, error } = await supabase
       .from('projects')
       .select('*')
       .order('created_at', { ascending: true })
-    if (!error) setProjects(data ?? [])
+    if (!error) {
+      setProjects(data ?? [])
+    } else {
+      console.error('Failed to load projects:', error.message)
+      setProjects([])
+    }
     setLoading(false)
   }, [])
 
   useEffect(() => {
-    if (!currentUser) return
+    if (!supabase || !currentUser?.authUserId) return
 
     fetchProjects()
 
@@ -67,10 +184,11 @@ export default function App() {
       .subscribe()
 
     return () => supabase.removeChannel(channel)
-  }, [currentUser, fetchProjects])
+  }, [currentUser?.authUserId, fetchProjects])
 
   // ── Assignment handlers ───────────────────────────────────────────────────
   async function handleAddSupportiveMember(projectId, memberId) {
+    if (!supabase || !currentUser) return
     const project = projects.find(p => p.id === projectId)
     if (!project) return
     const current = project.assigned_ids ?? []
@@ -91,6 +209,7 @@ export default function App() {
   }
 
   async function handleRemoveSupportiveMember(projectId, memberId) {
+    if (!supabase || !currentUser) return
     const project = projects.find(p => p.id === projectId)
     if (!project) return
     const current = project.assigned_ids ?? []
@@ -110,6 +229,7 @@ export default function App() {
   }
 
   async function handleSetChair(projectId, memberId) {
+    if (!supabase || !currentUser) return
     const project = projects.find(p => p.id === projectId)
     if (!project) return
     const current = project.chair_id
@@ -128,6 +248,7 @@ export default function App() {
   }
 
   async function handleRemoveChair(projectId) {
+    if (!supabase || !currentUser) return
     const project = projects.find(p => p.id === projectId)
     if (!project) return
     const current = project.chair_id
@@ -146,28 +267,30 @@ export default function App() {
   }
 
   async function handleAddProject({ name, status, avenue, project_date, description }) {
+    if (!supabase || !currentUser) return
     const { data, error } = await supabase
       .from('projects')
-      .insert([{ 
-        name, 
-        status, 
-        avenue: avenue || null, 
-        project_date: project_date || null, 
+      .insert([{
+        name,
+        status,
+        avenue: avenue || null,
+        project_date: project_date || null,
         description: description || null,
         assigned_ids: [],
-        chair_id: null
+        chair_id: null,
       }])
       .select()
       .single()
 
     if (!error && data) {
-      setProjects(prev => [...prev, data])
+      setProjects(prev => prev.find(p => p.id === data.id) ? prev : [...prev, data])
     } else {
       console.error('Failed to create project:', error?.message)
     }
   }
 
   async function handleDeleteProject(projectId) {
+    if (!supabase || !currentUser) return
     const snapshot = projects
     setProjects(prev => prev.filter(p => p.id !== projectId))
 
@@ -183,6 +306,7 @@ export default function App() {
   }
 
   async function handleToggleStatus(projectId) {
+    if (!supabase || !currentUser) return
     const project = projects.find(p => p.id === projectId)
     if (!project) return
     const newStatus = STATUS_CYCLE[project.status] ?? 'planning'
@@ -211,11 +335,37 @@ export default function App() {
   const completedProjects = projects.filter(p => p.status === 'done').length
 
   // ── Render ────────────────────────────────────────────────────────────────
-  if (!currentUser) {
+  if (authLoading || profileLoading) {
     return (
       <>
         {showSplash && <SplashIntro onFinish={() => setShowSplash(false)} />}
-        <AuthGate onAuth={handleLogin} />
+        <div className="auth-gate">
+          <div className="aurora-glow" />
+          <div className="auth-card glass" style={{ width: '360px', maxWidth: '92vw', padding: '2.2rem 2rem' }}>
+            <div className="auth-badge-icon">🔐</div>
+            <h2>Rotaract KAHE</h2>
+            <p className="auth-subtitle" style={{ marginBottom: 0 }}>Verifying session…</p>
+          </div>
+        </div>
+      </>
+    )
+  }
+
+  if (supabaseConfigError || !currentUser || isRecoveryMode) {
+    return (
+      <>
+        {showSplash && <SplashIntro onFinish={() => setShowSplash(false)} />}
+        <AuthGate
+          configError={supabaseConfigError}
+          authUser={session?.user ?? null}
+          authError={authError}
+          recoveryMode={isRecoveryMode}
+          onRecoveryComplete={() => {
+            setIsRecoveryMode(false)
+            loadedAuthUserIdRef.current = null
+          }}
+          onSignOut={handleLogout}
+        />
       </>
     )
   }

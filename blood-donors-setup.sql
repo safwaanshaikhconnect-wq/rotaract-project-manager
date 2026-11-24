@@ -1,8 +1,8 @@
 -- CODE RED: Blood Donor Registry
--- Run this in your Supabase SQL Editor (Dashboard → SQL Editor → New query)
+-- Run this in your Supabase SQL Editor AFTER supabase-setup.sql / supabase-auth-rls-migration.sql
 
 -- 1. Create the blood_donors table
-create table if not exists blood_donors (
+create table if not exists public.blood_donors (
   id              bigserial primary key,
   name            text        not null,
   blood_group     text        not null
@@ -13,22 +13,50 @@ create table if not exists blood_donors (
   created_at      timestamptz not null default now()
 );
 
--- 2. Enable Row Level Security — allow anon reads/writes (same as projects table)
-alter table blood_donors enable row level security;
+-- 2. Enable Row Level Security — authenticated authorized board members only
+alter table public.blood_donors enable row level security;
 
-create policy "Allow all for anon"
-  on blood_donors for all
-  to anon
-  using (true)
-  with check (true);
+drop policy if exists "Allow all for anon" on public.blood_donors;
+drop policy if exists "Authorized members can select blood_donors" on public.blood_donors;
+drop policy if exists "Authorized members can insert blood_donors" on public.blood_donors;
+drop policy if exists "Authorized members can update blood_donors" on public.blood_donors;
+drop policy if exists "Authorized members can delete blood_donors" on public.blood_donors;
+
+revoke all on table public.blood_donors from public, anon;
+grant select, insert, update, delete on table public.blood_donors to authenticated;
+grant usage, select on all sequences in schema public to authenticated;
+
+create policy "Authorized members can select blood_donors"
+  on public.blood_donors for select
+  to authenticated
+  using (public.is_authorized_member());
+
+create policy "Authorized members can insert blood_donors"
+  on public.blood_donors for insert
+  to authenticated
+  with check (public.is_authorized_member());
+
+create policy "Authorized members can update blood_donors"
+  on public.blood_donors for update
+  to authenticated
+  using (public.is_authorized_member())
+  with check (public.is_authorized_member());
+
+create policy "Authorized members can delete blood_donors"
+  on public.blood_donors for delete
+  to authenticated
+  using (public.is_authorized_member());
 
 -- 3. Enable real-time for the blood_donors table
-alter publication supabase_realtime add table blood_donors;
-
--- 4. If you already ran this script earlier, just add the phone column:
--- alter table blood_donors add column if not exists phone text;
-
--- 5. (Optional) Seed with a few sample donors
--- insert into blood_donors (name, blood_group, phone, donation_dates) values
---   ('Safwaan Shaikh', 'O+', '+91 98765 43210', '{}'),
---   ('Bharani Krishna', 'B+', null, '{2026-04-15}');
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'blood_donors'
+  ) then
+    alter publication supabase_realtime add table public.blood_donors;
+  end if;
+end $$;

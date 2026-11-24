@@ -1,123 +1,226 @@
-import { supabase } from './supabase'
+import { supabase, supabaseConfigError } from './supabase'
+import { MEMBERS } from './members'
 
-const MASTER_PASSWORD = 'rotaract2627'
-const USER_STORAGE_KEY = 'rotaract_current_user'
-
-/**
- * Generate default PIN from member's name:
- * First 3 alphabetical letters (lowercase) + '123'
- * E.g., "Safwaan Shaikh" -> "saf123", "L Mohammed Sajad" -> "lmo123"
- */
-export function getDefaultPin(name) {
-  if (!name) return '2627'
-  const lettersOnly = name.replace(/[^a-zA-Z]/g, '').toLowerCase()
-  const prefix = lettersOnly.slice(0, 3)
-  return (prefix.length >= 3 ? prefix : name.slice(0, 3).toLowerCase()) + '123'
-}
+const LEGACY_STORAGE_KEYS = [
+  'rotaract_current_user',
+  'rotaract_auth',
+  'rotaract_blood_donations',
+]
 
 /**
- * Verify member's PIN against Supabase or fallback algorithm
+ * Remove legacy client-side auth flags and sensitive local data caches.
  */
-export async function verifyMemberPin(member, inputPin) {
-  if (!member || !inputPin) return { success: false, message: 'Please select a member and enter a PIN.' }
-
-  const trimmed = inputPin.trim()
-  const defaultPin = getDefaultPin(member.name)
-
-  // Master password override
-  if (trimmed === MASTER_PASSWORD) {
-    return { success: true, member: { ...member, is_admin: true } }
-  }
-
+export function clearLegacyAuthArtifacts() {
   try {
-    const { data, error } = await supabase
-      .from('member_accounts')
-      .select('*')
-      .eq('member_id', member.id)
-      .maybeSingle()
-
-    if (!error && data) {
-      // User has an explicit entry in Supabase
-      if (data.pin_code === trimmed || data.pin_code.toLowerCase() === trimmed.toLowerCase()) {
-        return { success: true, member: { ...member, is_admin: !!data.is_admin } }
-      }
-      return { success: false, message: 'Incorrect PIN. Try again or ask your President.' }
+    for (const key of LEGACY_STORAGE_KEYS) {
+      localStorage.removeItem(key)
+      sessionStorage.removeItem(key)
     }
-  } catch (err) {
-    console.warn('Could not query member_accounts from Supabase, using fallback verification:', err)
-  }
-
-  // Fallback if table does not exist or network failed: check default PIN
-  const validPins = [defaultPin.toLowerCase(), '2627']
-  if (member.id === 1) validPins.push('saf123', 'moh123')
-  if (member.id === 35) validPins.push('udi123', 'aud123')
-  if (member.id === 8) validPins.push('lmo123', 'moh123')
-  if (member.id === 9) validPins.push('sha123', 'ssh123')
-
-  if (validPins.includes(trimmed.toLowerCase())) {
-    return {
-      success: true,
-      member: { ...member, is_admin: member.id === 1 || member.id === 2 }
-    }
-  }
-
-  return { success: false, message: 'Incorrect PIN. Default is first 3 letters of your name + 123 (e.g. ' + defaultPin + ')' }
-}
-
-/**
- * Update member's PIN in Supabase
- */
-export async function updateMemberPin(memberId, oldPin, newPin, memberName) {
-  if (!newPin || newPin.trim().length < 4) {
-    return { success: false, message: 'New PIN must be at least 4 characters long.' }
-  }
-
-  // Verify old pin first
-  const { success, message } = await verifyMemberPin({ id: memberId, name: memberName }, oldPin)
-  if (!success) {
-    return { success: false, message: 'Current PIN is incorrect.' }
-  }
-
-  try {
-    const { error } = await supabase
-      .from('member_accounts')
-      .upsert({
-        member_id: memberId,
-        pin_code: newPin.trim(),
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'member_id' })
-
-    if (error) {
-      return { success: false, message: 'Database error: ' + error.message }
-    }
-
-    return { success: true, message: 'PIN updated successfully!' }
-  } catch (err) {
-    return { success: false, message: 'Failed to update PIN: ' + err.message }
-  }
-}
-
-export function getCurrentUser() {
-  try {
-    const raw = localStorage.getItem(USER_STORAGE_KEY) || sessionStorage.getItem(USER_STORAGE_KEY)
-    return raw ? JSON.parse(raw) : null
   } catch {
-    return null
+    // Ignore storage access errors in restricted environments
   }
 }
 
-export function setCurrentUser(user) {
-  if (!user) {
-    localStorage.removeItem(USER_STORAGE_KEY)
-    sessionStorage.removeItem(USER_STORAGE_KEY)
-  } else {
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user))
-    sessionStorage.setItem('rotaract_auth', '1')
+function formatAuthError(error, fallback = 'Authentication failed. Please try again.') {
+  const msg = error?.message || ''
+  if (!msg) return fallback
+  if (msg.toLowerCase().includes('invalid login credentials')) {
+    return 'Invalid email or password.'
+  }
+  if (msg.toLowerCase().includes('email not confirmed')) {
+    return 'Please confirm your email address before signing in.'
+  }
+  return msg
+}
+
+/**
+ * Retrieve the active Supabase Auth session.
+ */
+export async function getSession() {
+  if (!supabase) {
+    return { session: null, error: new Error(supabaseConfigError || 'Supabase is not configured.') }
+  }
+  const { data, error } = await supabase.auth.getSession()
+  return { session: data?.session ?? null, error }
+}
+
+/**
+ * Subscribe to Supabase Auth state changes.
+ */
+export function onAuthStateChange(callback) {
+  if (!supabase) {
+    return { data: { subscription: { unsubscribe() {} } } }
+  }
+  return supabase.auth.onAuthStateChange(callback)
+}
+
+/**
+ * Sign in a board member with email and password via Supabase Auth.
+ */
+export async function signInWithEmail(email, password) {
+  if (!supabase) {
+    return { success: false, message: supabaseConfigError || 'Supabase is not configured.' }
+  }
+  const trimmedEmail = (email || '').trim()
+  if (!trimmedEmail || !password) {
+    return { success: false, message: 'Please enter both your email address and password.' }
+  }
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: trimmedEmail,
+    password,
+  })
+
+  if (error) {
+    return { success: false, message: formatAuthError(error) }
+  }
+
+  return { success: true, session: data.session, user: data.user }
+}
+
+/**
+ * Request a Supabase password reset email.
+ */
+export async function sendPasswordReset(email) {
+  if (!supabase) {
+    return { success: false, message: supabaseConfigError || 'Supabase is not configured.' }
+  }
+  const trimmedEmail = (email || '').trim()
+  if (!trimmedEmail) {
+    return { success: false, message: 'Please enter your email address.' }
+  }
+
+  const redirectTo = typeof window !== 'undefined' ? window.location.origin : undefined
+  const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, { redirectTo })
+  if (error) {
+    return { success: false, message: formatAuthError(error, 'Could not send password reset email.') }
+  }
+
+  return {
+    success: true,
+    message: 'If an account matches that email, a password reset link has been sent.',
   }
 }
 
-export function clearCurrentUser() {
-  localStorage.removeItem(USER_STORAGE_KEY)
-  sessionStorage.removeItem(USER_STORAGE_KEY)
-  sessionStorage.removeItem('rotaract_auth')
+/**
+ * Update password after verifying the user's current password.
+ */
+export async function updateAccountPassword(email, currentPassword, newPassword) {
+  if (!supabase) {
+    return { success: false, message: supabaseConfigError || 'Supabase is not configured.' }
+  }
+  if (!email) {
+    return { success: false, message: 'No authenticated email found for this session.' }
+  }
+  if (!currentPassword) {
+    return { success: false, message: 'Please enter your current password.' }
+  }
+  if (!newPassword || newPassword.length < 8) {
+    return { success: false, message: 'New password must be at least 8 characters long.' }
+  }
+
+  const { error: reauthError } = await supabase.auth.signInWithPassword({
+    email,
+    password: currentPassword,
+  })
+  if (reauthError) {
+    return { success: false, message: 'Current password is incorrect.' }
+  }
+
+  const { error } = await supabase.auth.updateUser({ password: newPassword })
+  if (error) {
+    return { success: false, message: formatAuthError(error, 'Failed to update password.') }
+  }
+
+  return { success: true, message: 'Password updated successfully!' }
+}
+
+/**
+ * Set a new password during a Supabase PASSWORD_RECOVERY session.
+ */
+export async function completePasswordRecovery(newPassword) {
+  if (!supabase) {
+    return { success: false, message: supabaseConfigError || 'Supabase is not configured.' }
+  }
+  if (!newPassword || newPassword.length < 8) {
+    return { success: false, message: 'New password must be at least 8 characters long.' }
+  }
+
+  const { error } = await supabase.auth.updateUser({ password: newPassword })
+  if (error) {
+    return { success: false, message: formatAuthError(error, 'Failed to reset password.') }
+  }
+
+  return { success: true, message: 'Password updated successfully!' }
+}
+
+/**
+ * Sign out from Supabase Auth and purge local sensitive caches.
+ */
+export async function signOut() {
+  clearLegacyAuthArtifacts()
+  if (!supabase) {
+    return { error: null }
+  }
+  return supabase.auth.signOut()
+}
+
+/**
+ * Resolve the authenticated Supabase user to an authorized active board member profile.
+ * Fails closed if the user is not linked to an active row in public.board_members.
+ */
+export async function resolveMemberProfile(authUser) {
+  if (!supabase || !authUser?.id) {
+    return {
+      authorized: false,
+      member: null,
+      reason: 'unauthenticated',
+      message: 'Authentication required.',
+    }
+  }
+
+  const { data, error } = await supabase.rpc('claim_board_member_profile')
+
+  if (error) {
+    const isSetupMissing =
+      error.code === 'PGRST202' ||
+      error.code === '42883' ||
+      error.code === '42P01' ||
+      error.code === 'PGRST205'
+
+    return {
+      authorized: false,
+      member: null,
+      reason: isSetupMissing ? 'setup_required' : 'error',
+      message: isSetupMissing
+        ? 'Supabase database authorization is not configured yet. Run supabase-auth-rls-migration.sql in the Supabase SQL Editor.'
+        : (error.message || 'Could not verify board membership.'),
+    }
+  }
+
+  const profile = Array.isArray(data) ? data[0] : data
+  if (!profile || !profile.is_active) {
+    return {
+      authorized: false,
+      member: null,
+      reason: 'not_board_member',
+      message: 'Your account is signed in, but is not linked to an active Rotaract KAHE board member profile. Contact your President or Secretary.',
+    }
+  }
+
+  const baseMember = MEMBERS.find(m => m.id === profile.member_id)
+
+  return {
+    authorized: true,
+    member: {
+      id: profile.member_id,
+      name: profile.full_name || baseMember?.name || authUser.email,
+      role: profile.role || baseMember?.role || 'Board Member',
+      group: profile.member_group || baseMember?.group || 'Board',
+      tier: baseMember?.tier || 'board',
+      is_admin: Boolean(profile.is_admin),
+      email: authUser.email,
+      authUserId: authUser.id,
+    },
+  }
 }

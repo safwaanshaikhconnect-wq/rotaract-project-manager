@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { colorFor, initials } from '../lib/members'
-import { updateMemberPin } from '../lib/auth'
+import { updateAccountPassword } from '../lib/auth'
 
 export default function AccountTab({ currentUser, projects, onLogout, onNavigateToProjects }) {
-  const [currentPin, setCurrentPin] = useState('')
-  const [newPin, setNewPin] = useState('')
-  const [confirmPin, setConfirmPin] = useState('')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -20,36 +20,36 @@ export default function AccountTab({ currentUser, projects, onLogout, onNavigate
   const allMyProjects = projects.filter(p => p.chair_id === currentUser.id || (p.assigned_ids ?? []).includes(currentUser.id))
   const activeCount = allMyProjects.filter(p => p.status !== 'done').length
 
-  async function handlePinSubmit(e) {
+  async function handlePasswordSubmit(e) {
     e.preventDefault()
     setError('')
     setSuccess('')
 
-    if (!currentPin.trim()) {
-      setError('Please enter your current PIN.')
+    if (!currentPassword) {
+      setError('Please enter your current password.')
       return
     }
-    if (newPin.trim().length < 4) {
-      setError('New PIN must be at least 4 characters.')
+    if (newPassword.length < 8) {
+      setError('New password must be at least 8 characters.')
       return
     }
-    if (newPin !== confirmPin) {
-      setError('New PIN and confirmation do not match.')
+    if (newPassword !== confirmPassword) {
+      setError('New password and confirmation do not match.')
       return
     }
 
     setLoading(true)
-    const res = await updateMemberPin(currentUser.id, currentPin, newPin, currentUser.name)
+    const res = await updateAccountPassword(currentUser.email, currentPassword, newPassword)
     setLoading(false)
 
     if (res.success) {
-      setSuccess('PIN changed successfully!')
-      setCurrentPin('')
-      setNewPin('')
-      setConfirmPin('')
+      setSuccess('Password changed successfully!')
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
       setTimeout(() => setSuccess(''), 4000)
     } else {
-      setError(res.message || 'Failed to update PIN.')
+      setError(res.message || 'Failed to update password.')
     }
   }
 
@@ -72,6 +72,7 @@ export default function AccountTab({ currentUser, projects, onLogout, onNavigate
             <div className="account-role-row">
               <span className="account-role-badge">{currentUser.role}</span>
               <span className="account-group-tag">📁 {currentUser.group}</span>
+              {currentUser.email && <span className="account-group-tag">✉️ {currentUser.email}</span>}
             </div>
           </div>
 
@@ -155,52 +156,55 @@ export default function AccountTab({ currentUser, projects, onLogout, onNavigate
           )}
         </div>
 
-        {/* Right: Change PIN Form */}
+        {/* Right: Change Password Form */}
         <div className="account-section glass">
-          <h3 className="account-section-title">Change Account PIN</h3>
+          <h3 className="account-section-title">Change Account Password</h3>
           <p style={{ fontSize: '12.5px', color: '#9ca3af', marginBottom: '16px', lineHeight: '1.4' }}>
-            Update your personal passcode. Your initial PIN was first 3 letters of your name + 123.
+            Update your personal login password (minimum 8 characters).
           </p>
 
-          <form onSubmit={handlePinSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <form onSubmit={handlePasswordSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '11.5px', fontWeight: '600', color: '#9ca3af', marginBottom: '5px', textTransform: 'uppercase' }}>
-                Current PIN
+                Current Password
               </label>
               <input
                 type="password"
-                placeholder="Enter your current PIN"
-                value={currentPin}
-                onChange={e => setCurrentPin(e.target.value)}
+                placeholder="Enter your current password"
+                value={currentPassword}
+                onChange={e => setCurrentPassword(e.target.value)}
                 className="auth-input"
+                autoComplete="current-password"
                 style={{ textAlign: 'left', padding: '9px 12px' }}
               />
             </div>
 
             <div>
               <label style={{ display: 'block', fontSize: '11.5px', fontWeight: '600', color: '#9ca3af', marginBottom: '5px', textTransform: 'uppercase' }}>
-                New PIN / Password
+                New Password
               </label>
               <input
                 type="password"
-                placeholder="Minimum 4 characters"
-                value={newPin}
-                onChange={e => setNewPin(e.target.value)}
+                placeholder="Minimum 8 characters"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
                 className="auth-input"
+                autoComplete="new-password"
                 style={{ textAlign: 'left', padding: '9px 12px' }}
               />
             </div>
 
             <div>
               <label style={{ display: 'block', fontSize: '11.5px', fontWeight: '600', color: '#9ca3af', marginBottom: '5px', textTransform: 'uppercase' }}>
-                Confirm New PIN
+                Confirm New Password
               </label>
               <input
                 type="password"
-                placeholder="Re-enter new PIN"
-                value={confirmPin}
-                onChange={e => setConfirmPin(e.target.value)}
+                placeholder="Re-enter new password"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
                 className="auth-input"
+                autoComplete="new-password"
                 style={{ textAlign: 'left', padding: '9px 12px' }}
               />
             </div>
@@ -214,7 +218,7 @@ export default function AccountTab({ currentUser, projects, onLogout, onNavigate
               disabled={loading}
               style={{ marginTop: '8px', padding: '10px 16px', fontSize: '13px', fontWeight: '600' }}
             >
-              {loading ? 'Saving…' : 'Update My PIN'}
+              {loading ? 'Saving…' : 'Update Password'}
             </button>
           </form>
         </div>

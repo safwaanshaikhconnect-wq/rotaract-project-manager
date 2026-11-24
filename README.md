@@ -1,55 +1,89 @@
 # Rotaract KAHE — Team Dashboard RY 2026–27
 
-A lightweight team tracker. See who's busy, who's free, and what every member is working on. Drag members onto projects to assign them.
+A team project, availability, analytics, reporting, and Code Red blood donor management dashboard for the Rotaract Club of Karpagam Academy of Higher Education (RID 3206).
 
 ---
 
 ## Tech stack
 - **React + Vite** — frontend
-- **Supabase** — database + real-time sync
-- **Vercel** — hosting (free)
+- **Supabase Auth + PostgreSQL + Realtime** — email/password authentication, Row Level Security (RLS), database, and real-time sync
+- **Vercel** — hosting
 
 ---
 
-## Setup (15 minutes)
+## Authentication & Security Architecture
 
-### Step 1 — Supabase (database)
+- **Supabase Auth (Email + Password):** Board members sign in with individual Supabase Auth accounts (`supabase.auth.signInWithPassword`). No shared password, default PINs, or credentials are stored in frontend code.
+- **Database Authorization (`public.board_members`):** Authenticated sessions are verified against `public.board_members` via `SECURITY DEFINER` PostgreSQL helpers (`public.is_authorized_member()`, `public.is_board_admin()`, and `public.claim_board_member_profile()`).
+- **Row Level Security (RLS):** Unauthenticated (`anon`) access to `projects`, `blood_donors`, `blood_donations`, `board_members`, and legacy `member_accounts` is denied. Only confirmed, active board members can read or modify dashboard data.
+- **Zero `service_role` Exposure:** Only `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are used on the frontend; `src/lib/supabase.js` explicitly rejects `service_role` / secret keys if accidentally configured.
 
-1. Go to [supabase.com](https://supabase.com) → Create a new project
-2. Once created, go to **SQL Editor** → **New query**
-3. Paste the entire contents of `supabase-setup.sql` and run it
-4. Go to **Settings → API** and copy:
-   - `Project URL`
-   - `anon` / `public` key
+---
 
-### Step 2 — Local setup
+## Setup
+
+### Step 1 — Supabase Database & RLS Setup
+
+1. Open your project in the [Supabase Dashboard](https://supabase.com).
+2. Go to **SQL Editor → New query**.
+3. Choose the SQL script that matches your database state:
+   - **Existing database (preserves all existing records):** run `supabase-auth-rls-migration.sql`
+   - **Brand-new Supabase project:** run `supabase-setup.sql`, then `blood-donors-setup.sql`, then `blood-donations-log-setup.sql`
+
+### Step 2 — Supabase Dashboard Auth Configuration (Required)
+
+1. **Disable public sign-ups** (prevents unauthorized outsiders from creating accounts):
+   - Go to **Authentication → Sign In / Providers** (or **Authentication → Settings → User Signups**).
+   - Turn **Allow new users to sign up** **OFF** (keep **Email** provider **ON**).
+2. **Map board member emails in `public.board_members`**:
+   - In **SQL Editor**, assign each active board member's real email address (matching the email you will invite/create in Supabase Auth):
+     ```sql
+     update public.board_members set email = 'president@example.com' where member_id = 1;
+     update public.board_members set email = 'secretary@example.com' where member_id = 2;
+     -- Repeat for each active board member
+     ```
+   - Alternatively, insert/update rows in **Table Editor → `board_members`**.
+3. **Create or invite board member accounts**:
+   - Go to **Authentication → Users → Add user** (or **Invite user**).
+   - If creating a user directly, check **Auto Confirm User** and provide a strong temporary password (or send an invite / password reset link so the member sets their own password).
+   - On first sign-in, `claim_board_member_profile()` automatically binds `auth_user_id` to the matching confirmed email in `public.board_members`.
+4. **Configure URL settings for Password Reset**:
+   - Go to **Authentication → URL Configuration**.
+   - Set **Site URL** to your production URL (e.g. `https://rotaract-kahe.vercel.app`) and add `http://localhost:5173` under **Redirect URLs**.
+5. **Verify RLS enforcement**:
+   - Confirm an unauthenticated `anon` request to `/rest/v1/projects?select=*` returns HTTP `401`/`403` (or empty/denied permission error) with zero rows exposed.
+
+### Step 3 — Local Environment Setup
 
 ```bash
-# Clone / unzip the project, then:
 npm install
 
-# Create your env file
+# Create your local env file (gitignored)
 cp .env.example .env.local
-# Edit .env.local and paste your Supabase URL and anon key
+```
 
-# Run locally
+Edit `.env.local` with values from **Supabase Dashboard → Project Settings → API**:
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY` (public `anon` key only — never `service_role`)
+
+Run locally:
+
+```bash
 npm run dev
 ```
 
-Visit `http://localhost:5173` — the password is `rotaract2627`
+Build for production:
 
-> **Change the password**: open `src/components/AuthGate.jsx` and edit the `TEAM_PASSWORD` constant.
+```bash
+npm run build
+```
 
-### Step 3 — Deploy to Vercel (free)
+### Step 4 — Deploy to Vercel
 
-1. Push this folder to a GitHub repo
-2. Go to [vercel.com](https://vercel.com) → New Project → import your repo
-3. Add environment variables in Vercel dashboard:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-4. Deploy — you'll get a live URL like `rotaract-kahe.vercel.app`
-
-Share that URL with your team. That's it.
+1. Push this repository to GitHub (never commit `.env.local`).
+2. Import the repository in [Vercel](https://vercel.com).
+3. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in Vercel Project Settings → Environment Variables.
+4. Deploy and verify the production URL is added to Supabase **Authentication → URL Configuration → Redirect URLs**.
 
 ---
 
@@ -57,39 +91,43 @@ Share that URL with your team. That's it.
 
 | What you want | How |
 |---|---|
-| See who's free | Board members tab — green dot = available, blue = on a project |
-| Assign someone to a project | Drag their card from Board members → drop on a project |
-| Remove someone from a project | Projects tab → click ✕ next to their name |
-| Add a new project | Projects tab → "Add project" button |
-| Change project status | Not supported in UI yet — edit directly in Supabase dashboard |
+| Sign in / reset password | Enter your board email & password on the login screen (or use **Forgot password?**) |
+| View workload & availability | **Board members** tab — green = available, amber = active project count |
+| Manage projects & assignments | **Projects** tab — create/delete projects, toggle status, set Event Chair & Supportive Members |
+| View analytics & generate PDFs | **Analytics** and **Report** tabs |
+| Blood donor registry & logs | **Code Red** tab |
+| Change password / sign out | **My Account** tab |
 
 ---
 
 ## Project structure
 
-```
+```text
 src/
   components/
-    AuthGate.jsx      ← shared password gate
-    BoardTab.jsx      ← member grid with drag
-    ProjectsTab.jsx   ← project cards with drop zones
+    AccountTab.jsx    ← profile summary, password update, sign out
+    AnalyticsTab.jsx  ← project & involvement metrics
+    AuthGate.jsx      ← Supabase email/password sign-in & password recovery UI
+    BoardTab.jsx      ← board member availability & chaired projects grid
+    CodeRedTab.jsx    ← blood donor registry & master donation log
+    ProjectsTab.jsx   ← project creation, filtering, chair & supportive assignments
+    ReportTab.jsx     ← monthly PDF report generator (jsPDF)
+    SplashIntro.jsx   ← opening splash overlay
   lib/
-    members.js        ← all 33 members data (edit here to update roster)
-    supabase.js       ← supabase client
-  App.jsx             ← main logic, state, supabase calls
-  index.css           ← all styles
+    auth.js           ← Supabase Auth session, sign-in/out, password reset, profile claim
+    members.js        ← board roster metadata & avatar helpers
+    supabase.js       ← Supabase client with service_role guard
+  App.jsx             ← session guard, auth state listener, project sync
+  index.css           ← application styles
+supabase-auth-rls-migration.sql  ← idempotent migration for existing Supabase DBs
+supabase-setup.sql               ← fresh DB setup for projects & board_members
+blood-donors-setup.sql           ← fresh DB setup for blood_donors
+blood-donations-log-setup.sql    ← fresh DB setup for blood_donations
+member-accounts-setup.sql        ← deprecated legacy table lockdown
 ```
 
 ---
 
-## Updating the member list
+## Security note on Git history
 
-Open `src/lib/members.js` — the `MEMBERS` array has every member. Add, edit, or remove entries there. The `id` field just needs to be a unique number — it determines the avatar color.
-
----
-
-## Notes
-
-- Real-time: when anyone assigns a member, all open browsers update within ~1 second
-- The shared password lives in `src/components/AuthGate.jsx` — change `TEAM_PASSWORD`
-- Member data is hardcoded (no database) — to update the roster you edit the JS file and redeploy
+Earlier commits in this repository contained a legacy shared password (`TEAM_PASSWORD` / `MASTER_PASSWORD`) and plaintext PIN setup files. Even though all hardcoded credentials have been removed from the codebase, if this repository was ever public or shared externally, rotate any previously used credentials and consider purging sensitive commit history if required.

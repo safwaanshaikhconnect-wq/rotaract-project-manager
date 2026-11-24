@@ -17,8 +17,6 @@ const BLOOD_GROUP_COLORS = {
   'AB-': { bg: 'rgba(217,119,6,0.12)',  fg: '#fcd34d', border: 'rgba(217,119,6,0.35)' },
 }
 
-const LOCAL_DONATIONS_KEY = 'rotaract_blood_donations'
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getDonorStatus(donation_dates) {
@@ -439,37 +437,38 @@ export default function CodeRedTab() {
 
   // ── Fetch & Realtime for Donors ──────────────────────────────────────────
   const fetchDonors = useCallback(async () => {
+    if (!supabase) return
     const { data, error } = await supabase
       .from('blood_donors')
       .select('*')
       .order('created_at', { ascending: true })
-    if (!error) setDonors(data ?? [])
+    if (!error) {
+      setDonors(data ?? [])
+    } else {
+      console.error('Failed to fetch blood donors:', error.message)
+      setDonors([])
+    }
     setLoading(false)
   }, [])
 
   // ── Fetch & Realtime for Donation Logs ───────────────────────────────────
   const fetchDonations = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from('blood_donations')
-        .select('*')
-        .order('donation_date', { ascending: false })
+    if (!supabase) return
+    const { data, error } = await supabase
+      .from('blood_donations')
+      .select('*')
+      .order('donation_date', { ascending: false })
 
-      if (!error && data) {
-        setDonations(data)
-        localStorage.setItem(LOCAL_DONATIONS_KEY, JSON.stringify(data))
-      } else {
-        // Fallback to localStorage if table doesn't exist yet
-        const cached = localStorage.getItem(LOCAL_DONATIONS_KEY)
-        if (cached) setDonations(JSON.parse(cached))
-      }
-    } catch {
-      const cached = localStorage.getItem(LOCAL_DONATIONS_KEY)
-      if (cached) setDonations(JSON.parse(cached))
+    if (!error && data) {
+      setDonations(data)
+    } else {
+      if (error) console.error('Failed to fetch blood donations:', error.message)
+      setDonations([])
     }
   }, [])
 
   useEffect(() => {
+    if (!supabase) return
     fetchDonors()
     fetchDonations()
 
@@ -506,29 +505,40 @@ export default function CodeRedTab() {
 
   // ── Mutations ────────────────────────────────────────────────────────────
   async function handleAddDonor({ name, blood_group, phone, notes }) {
+    if (!supabase) return
     const { data, error } = await supabase
       .from('blood_donors')
       .insert([{ name, blood_group, phone, notes, donation_dates: [] }])
       .select()
       .single()
     if (!error && data) {
-      setDonors(prev => [...prev, data])
+      setDonors(prev => prev.find(d => d.id === data.id) ? prev : [...prev, data])
+    } else if (error) {
+      console.error('Failed to add donor:', error.message)
     }
   }
 
   // Called when logging donation for a registered donor with custom date
   async function handleLogDonorDonation({ donorId, donorName, donationDate, donationType, hospitalName }) {
+    if (!supabase) return
     const donor = donors.find(d => d.id === donorId)
     if (!donor) return
 
-    const updated = [...(donor.donation_dates ?? []), donationDate].sort()
+    const previousDates = donor.donation_dates ?? []
+    const updated = [...previousDates, donationDate].sort()
     setDonors(prev => prev.map(d => d.id === donorId ? { ...d, donation_dates: updated } : d))
 
     // 1. Update donor cooldown
-    await supabase
+    const { error } = await supabase
       .from('blood_donors')
       .update({ donation_dates: updated })
       .eq('id', donorId)
+
+    if (error) {
+      setDonors(prev => prev.map(d => d.id === donorId ? { ...d, donation_dates: previousDates } : d))
+      console.error('Failed to update donor donation dates:', error.message)
+      return
+    }
 
     // 2. Also log in master donations log
     await handleRecordDonation({
@@ -541,72 +551,76 @@ export default function CodeRedTab() {
 
   // Called when adding an entry to master donation log
   async function handleRecordDonation(donationData, autoUpdateDonor = true) {
-    const newRecord = {
+    if (!supabase) return
+    const tempId = `temp-${Date.now()}`
+    const optimisticRecord = {
       ...donationData,
-      id: Date.now(),
-      created_at: new Date().toISOString()
+      id: tempId,
+      created_at: new Date().toISOString(),
     }
 
-    // Local state update first
-    setDonations(prev => {
-      const updated = [newRecord, ...prev]
-      localStorage.setItem(LOCAL_DONATIONS_KEY, JSON.stringify(updated))
-      return updated
-    })
+    setDonations(prev => [optimisticRecord, ...prev])
 
-    // If matches a registered club donor and autoUpdate is requested, update their cooldown!
+    // If matches a registered club donor and autoUpdate is requested, update their cooldown
     if (autoUpdateDonor) {
       const matchedDonor = donors.find(d => d.name.toLowerCase() === donationData.donor_name.toLowerCase())
       if (matchedDonor) {
-        const updatedDates = [...(matchedDonor.donation_dates ?? []), donationData.donation_date].sort()
+        const previousDates = matchedDonor.donation_dates ?? []
+        const updatedDates = [...previousDates, donationData.donation_date].sort()
         setDonors(prev => prev.map(d => d.id === matchedDonor.id ? { ...d, donation_dates: updatedDates } : d))
-        supabase
+        const { error: donorUpdateError } = await supabase
           .from('blood_donors')
           .update({ donation_dates: updatedDates })
           .eq('id', matchedDonor.id)
-          .then()
+        if (donorUpdateError) {
+          setDonors(prev => prev.map(d => d.id === matchedDonor.id ? { ...d, donation_dates: previousDates } : d))
+          console.error('Failed to sync donor cooldown:', donorUpdateError.message)
+        }
       }
     }
 
     // Persist to Supabase blood_donations
-    try {
-      const { data, error } = await supabase
-        .from('blood_donations')
-        .insert([{
-          donor_name: donationData.donor_name,
-          donation_type: donationData.donation_type,
-          hospital_name: donationData.hospital_name,
-          donation_date: donationData.donation_date,
-          notes: donationData.notes || null
-        }])
-        .select()
-        .single()
+    const { data, error } = await supabase
+      .from('blood_donations')
+      .insert([{
+        donor_name: donationData.donor_name,
+        donation_type: donationData.donation_type,
+        hospital_name: donationData.hospital_name,
+        donation_date: donationData.donation_date,
+        notes: donationData.notes || null,
+      }])
+      .select()
+      .single()
 
-      if (!error && data) {
-        setDonations(prev => prev.map(d => d.id === newRecord.id ? data : d))
-      }
-    } catch (err) {
-      console.warn('Could not insert to blood_donations in Supabase, using local cache:', err)
+    if (!error && data) {
+      setDonations(prev => prev.map(d => d.id === tempId ? data : d))
+    } else {
+      setDonations(prev => prev.filter(d => d.id !== tempId))
+      if (error) console.error('Failed to record blood donation:', error.message)
     }
   }
 
   async function handleDeleteDonation(id) {
-    setDonations(prev => {
-      const updated = prev.filter(d => d.id !== id)
-      localStorage.setItem(LOCAL_DONATIONS_KEY, JSON.stringify(updated))
-      return updated
-    })
+    if (!supabase) return
+    const snapshot = donations
+    setDonations(prev => prev.filter(d => d.id !== id))
 
-    try {
-      await supabase.from('blood_donations').delete().eq('id', id)
-    } catch {}
+    const { error } = await supabase.from('blood_donations').delete().eq('id', id)
+    if (error) {
+      setDonations(snapshot)
+      console.error('Failed to delete blood donation:', error.message)
+    }
   }
 
   async function handleDeleteDonor(donorId) {
+    if (!supabase) return
     const snapshot = donors
     setDonors(prev => prev.filter(d => d.id !== donorId))
     const { error } = await supabase.from('blood_donors').delete().eq('id', donorId)
-    if (error) setDonors(snapshot)
+    if (error) {
+      setDonors(snapshot)
+      console.error('Failed to delete blood donor:', error.message)
+    }
   }
 
   // ── Stats ────────────────────────────────────────────────────────────────
